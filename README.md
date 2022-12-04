@@ -1,5 +1,10 @@
-# Project based learning
-This repository includes small/medium projects where I learn/explore a new topic.
+# Blockchain
+Proof of concept blockchain
 
-# Index
-- [ ] Blockchain - Go
+## Features
+- [X] Block chaining cryptographically valid
+- [X] Static difficulty proof of work
+- [ ] Transactions
+- [ ] Networking
+- [ ] Dynamic difficulty proof of work
+- [ ] Other type of proofs
