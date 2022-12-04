@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+set -euo pipefail
+DIR=${0%/*}
+
+go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
+
+protoc --proto_path=$DIR/../pb --go_out=$DIR/../pb --go_opt=paths=source_relative blockchain.proto

@@ -1,0 +1,15 @@
+syntax = "proto3";
+
+option go_package = "blockchain/pb";
+
+message Block {
+  Header header = 1;
+
+  message Header {
+    uint32 version = 1;
+    bytes prev_block_hash = 2; // 256-bit hash of the previous block header	
+    uint32 timestamp = 3;
+    uint32 difficulty = 4; // number of left bit shifts to generate a 256-bit target
+    uint32 nonce = 5;
+  }
+}

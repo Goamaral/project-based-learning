@@ -1,15 +1,19 @@
 package main
 
-import "blockchain/pkg/blockchain"
+import "blockchain/internal/blockchain"
 
 func main() {
-	bc := blockchain.NewBlockchain()
+	bc := blockchain.NewBlockchain(250)
+	err := bc.AddGenisisBlock()
+	if err != nil {
+		panic(err)
+	}
 
 	println("Creating block")
-	newBlock := blockchain.NewBlock("Goa", bc.GetLastHash())
+	newBlock := bc.NewBlock()
 
 	println("Mining block")
-	err := bc.MineBlock(newBlock)
+	err = bc.MineBlock(newBlock)
 	if err != nil {
 		panic(err)
 	}
