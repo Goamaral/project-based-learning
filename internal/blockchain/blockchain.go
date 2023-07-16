@@ -10,59 +10,120 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-const BucketName = "blockchain"
+const InfoBucketName = "info"
+const BlockBucketName = "block"
 
 type Blockchain struct {
-	db     *bolt.DB
-	config *pb.Config
-	blocks []Block
+	db         *bolt.DB
+	Difficulty uint32
+	LastHash   Hash
+	Blocks     map[Hash]Block
 }
 
 func NewBlockchain(db *bolt.DB, difficulty uint32) (Blockchain, error) {
 	bc := Blockchain{
-		db:     db,
-		config: &pb.Config{Difficulty: difficulty},
+		db:         db,
+		Difficulty: difficulty,
+		Blocks:     map[Hash]Block{},
 	}
 	return bc, db.Update(func(tx *bolt.Tx) error {
-		// Reset bucket
-		err := tx.DeleteBucket([]byte(BucketName))
+		// Reset info bucket
+		err := tx.DeleteBucket([]byte(InfoBucketName))
 		if err != nil && !errors.Is(err, bolt.ErrBucketNotFound) {
-			return fmt.Errorf("failed to delete reset bucket: %w", err)
+			return fmt.Errorf("failed to delete info bucket: %w", err)
 		}
-		configBucket, err := tx.CreateBucket([]byte(BucketName))
+		_, err = tx.CreateBucket([]byte(InfoBucketName))
 		if err != nil {
-			return fmt.Errorf("failed to create config bucket: %w", err)
+			return fmt.Errorf("failed to create info bucket: %w", err)
 		}
 
-		// Set config
-		bts, err := proto.Marshal(bc.config)
-		if err != nil {
-			return fmt.Errorf("failed to marshal config: %w", err)
+		// Reset block bucket
+		err = tx.DeleteBucket([]byte(BlockBucketName))
+		if err != nil && !errors.Is(err, bolt.ErrBucketNotFound) {
+			return fmt.Errorf("failed to delete block bucket: %w", err)
 		}
-		err = configBucket.Put([]byte("config"), bts)
+		_, err = tx.CreateBucket([]byte(BlockBucketName))
 		if err != nil {
-			return fmt.Errorf("failed to put config: %w", err)
+			return fmt.Errorf("failed to create block bucket: %w", err)
+		}
+
+		// Set blockchain info
+		err = bc.updateInfoBucket(tx)
+		if err != nil {
+			return fmt.Errorf("failed to update info bucket: %w", err)
 		}
 
 		// Add genesis block
-		println("Adding genesis block")
-		err = bc.addBlock(tx, newBlock(Hash{}, difficulty))
+		genesisBlock := NewBlock(Hash{}, difficulty)
+		_, err = bc.addBlock(tx, genesisBlock)
 		if err != nil {
 			return fmt.Errorf("failed to add genesis block: %w", err)
 		}
-		println("Genesis block added")
 
 		return nil
 	})
 }
 
+func LoadBlockchain(db *bolt.DB) (Blockchain, error) {
+	bc := Blockchain{
+		db:     db,
+		Blocks: map[Hash]Block{},
+	}
+	return bc, db.View(func(tx *bolt.Tx) error {
+		infoBucket := tx.Bucket([]byte(InfoBucketName))
+
+		// Load config
+		bts := infoBucket.Get([]byte("blockchain"))
+		pBlockchain := &pb.Blockchain{}
+		err := proto.Unmarshal(bts, pBlockchain)
+		if err != nil {
+			return fmt.Errorf("failed to load blockchain info: %w", err)
+		}
+		bc.hydrateWithProto(pBlockchain)
+
+		// Load blocks
+		blocksBucket := tx.Bucket([]byte(BlockBucketName))
+		pBlock := &pb.Block{}
+		hash := bc.LastHash
+		for {
+			_, found := bc.Blocks[hash]
+			if found {
+				return fmt.Errorf("found duplicate block (%s)", hash)
+			}
+
+			bts := blocksBucket.Get(hash[:])
+			if bts == nil {
+				return fmt.Errorf("failed to find block (%s)", hash)
+			}
+			err := proto.Unmarshal(bts, pBlock)
+			if err != nil {
+				return fmt.Errorf("failed to unmarshal block (%s): %w", hash, err)
+			}
+			block := NewBlockFromProto(pBlock)
+			bc.Blocks[hash] = block
+
+			if block.IsGenesisBlock() {
+				break
+			}
+			hash = Hash(block.PrevBlockHash)
+		}
+
+		return nil
+	})
+}
+
+func (bc Blockchain) Proto() *pb.Blockchain {
+	return &pb.Blockchain{
+		LastHash:   bc.LastHash[:],
+		Difficulty: bc.Difficulty,
+	}
+}
+
 func (bc *Blockchain) MineNewBlock() error {
-	println("Creating block")
 	block, err := bc.newBlock()
 	if err != nil {
 		return fmt.Errorf("failed to create block: %w", err)
 	}
-	println("Block created")
 
 	println("Mining block")
 	for {
@@ -81,56 +142,68 @@ func (bc *Blockchain) MineNewBlock() error {
 	}
 	println("Block mined")
 
-	println("Adding block")
 	err = bc.db.Update(func(tx *bolt.Tx) error {
-		return bc.addBlock(tx, block)
+		_, err := bc.addBlock(tx, block)
+		return err
 	})
 	if err != nil {
 		return fmt.Errorf("failed to add mined block: %w", err)
 	}
-	println("Block added")
 
 	return nil
 }
 
 /* PRIVATE */
 func (bc Blockchain) newBlock() (Block, error) {
-	hash, err := bc.getLastHash()
-	if err != nil {
-		return Block{}, fmt.Errorf("failed to get last hash: %w", err)
-	}
-	return newBlock(hash, bc.config.Difficulty), nil
+	return NewBlock(bc.LastHash, bc.Difficulty), nil
 }
 
-func (bc *Blockchain) addBlock(tx *bolt.Tx, block Block) error {
+func (bc *Blockchain) addBlock(tx *bolt.Tx, block Block) (Hash, error) {
 	isValid, err := block.IsValid()
 	if err != nil {
-		return fmt.Errorf("failed to validate block: %w", err)
+		return Hash{}, fmt.Errorf("failed to validate block: %w", err)
 	}
 	if !isValid {
-		return errors.New("invalid block")
+		return Hash{}, errors.New("invalid block")
 	}
 
-	// Update db
 	hash, err := block.Hash()
 	if err != nil {
-		return fmt.Errorf("failed to hash block: %w", err)
+		return Hash{}, fmt.Errorf("failed to hash block: %w", err)
 	}
 	bts, err := proto.Marshal(block.Proto())
 	if err != nil {
-		return fmt.Errorf("failed to marshal block: %w", err)
+		return Hash{}, fmt.Errorf("failed to marshal block: %w", err)
 	}
-	bucket := tx.Bucket([]byte(BucketName))
+	bucket := tx.Bucket([]byte(BlockBucketName))
 	err = bucket.Put(hash[:], bts)
 	if err != nil {
-		return fmt.Errorf("failed to put block: %w", err)
+		return Hash{}, fmt.Errorf("failed to put block: %w", err)
+	}
+	bc.Blocks[hash] = block
+	bc.LastHash = hash
+	err = bc.updateInfoBucket(tx)
+	if err != nil {
+		return Hash{}, fmt.Errorf("failed to update info bucket: %w", err)
 	}
 
-	bc.blocks = append(bc.blocks, block)
-
-	return nil
+	return hash, nil
 }
 
-func (bc Blockchain) getLastHash() (Hash, error) {
-	return bc.blocks[len(bc.blocks)-1].Hash()
+func (bc *Blockchain) hydrateWithProto(pBlockchain *pb.Blockchain) {
+	bc.LastHash = Hash(pBlockchain.LastHash)
+	bc.Difficulty = pBlockchain.Difficulty
+}
+
+func (bc *Blockchain) updateInfoBucket(tx *bolt.Tx) error {
+	infoBucket := tx.Bucket([]byte(InfoBucketName))
+	bts, err := proto.Marshal(bc.Proto())
+	if err != nil {
+		return fmt.Errorf("failed to marshal blockchain info: %w", err)
+	}
+	err = infoBucket.Put([]byte("blockchain"), bts)
+	if err != nil {
+		return fmt.Errorf("failed to put blockchain info: %w", err)
+	}
+	return nil
 }

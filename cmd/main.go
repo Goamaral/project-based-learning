@@ -13,7 +13,12 @@ func main() {
 	}
 	defer closeDb()
 
-	bc, err := blockchain.NewBlockchain(db, 20)
+	// bc, err := blockchain.NewBlockchain(db, 20)
+	// if err != nil {
+	// 	panic(err)
+	// }
+
+	bc, err := blockchain.LoadBlockchain(db)
 	if err != nil {
 		panic(err)
 	}

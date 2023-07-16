@@ -8,16 +8,22 @@ import (
 )
 
 type Block struct {
-	BlockHeader
+	Block_Header
 }
 
-func newBlock(prevBlockHash Hash, difficulty uint32) Block {
-	return Block{newBlockHeader(prevBlockHash, difficulty)}
+func NewBlock(prevBlockHash Hash, difficulty uint32) Block {
+	return Block{NewBlock_Header(prevBlockHash, difficulty)}
+}
+
+func NewBlockFromProto(pBlock *pb.Block) Block {
+	return Block{
+		Block_Header: NewBlock_HeaderFromProto(pBlock.Header),
+	}
 }
 
 func (b Block) Proto() *pb.Block {
 	return &pb.Block{
-		Header: b.BlockHeader.Proto(),
+		Header: b.Block_Header.Proto(),
 	}
 }
 
@@ -42,5 +48,5 @@ func (b Block) IsValid() (bool, error) {
 }
 
 func (b Block) IsGenesisBlock() bool {
-	return b.PrevBlockHash == nil
+	return b.PrevBlockHash == Hash{}
 }

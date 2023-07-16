@@ -2,8 +2,9 @@ syntax = "proto3";
 
 option go_package = "blockchain/pb";
 
-message Config {
+message Blockchain {
   uint32 difficulty = 1;
+  bytes last_hash = 2;
 }
 
 message Block {
