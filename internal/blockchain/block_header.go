@@ -1,45 +1,44 @@
 package blockchain
 
 import (
-	"bytes"
+	"blockchain/pb"
 	"crypto/sha256"
 	"time"
-)
 
-type BlockVersion uint8
-
-const (
-	BlockVersion_1 BlockVersion = 1
+	"google.golang.org/protobuf/proto"
 )
 
 type BlockHeader struct {
-	version       BlockVersion
-	prevBlockHash Hash
-	timestamp     uint32
-	difficulty    uint8
-	nonce         uint32
+	Version       pb.Block_Header_Version
+	PrevBlockHash []byte
+	Timestamp     uint32
+	Difficulty    uint32
+	Nonce         uint32
 }
 
-func newBlockHeader(prevBlockHash Hash, difficulty uint8) *BlockHeader {
-	return &BlockHeader{
-		version:       BlockVersion_1,
-		prevBlockHash: prevBlockHash,
-		timestamp:     uint32(time.Now().Unix()),
-		difficulty:    difficulty,
+func newBlockHeader(prevBlockHash Hash, difficulty uint32) BlockHeader {
+	return BlockHeader{
+		Version:       pb.Block_Header_VERSION_1,
+		PrevBlockHash: prevBlockHash[:],
+		Timestamp:     uint32(time.Now().Unix()),
+		Difficulty:    difficulty,
 	}
 }
 
-func (bh BlockHeader) GetHash() Hash {
-	return sha256.Sum256(
-		bytes.Join(
-			[][]byte{
-				UintToBytes(uint64(bh.version)),
-				bh.prevBlockHash[:],
-				UintToBytes(uint64(bh.timestamp)),
-				UintToBytes(uint64(bh.difficulty)),
-				UintToBytes(uint64(bh.nonce)),
-			},
-			[]byte{},
-		),
-	)
+func (bh *BlockHeader) Hash() (Hash, error) {
+	bts, err := proto.Marshal(bh.Proto())
+	if err != nil {
+		return Hash{}, err
+	}
+	return Hash(sha256.Sum256(bts)), nil
+}
+
+func (bh *BlockHeader) Proto() *pb.Block_Header {
+	return &pb.Block_Header{
+		Version:       bh.Version,
+		PrevBlockHash: bh.PrevBlockHash,
+		Timestamp:     bh.Timestamp,
+		Difficulty:    bh.Difficulty,
+		Nonce:         bh.Nonce,
+	}
 }

@@ -2,40 +2,45 @@ package blockchain
 
 import (
 	"blockchain/pb"
+	"fmt"
 	"math"
 	"math/big"
-
-	"google.golang.org/protobuf/proto"
 )
 
 type Block struct {
-	*BlockHeader
+	BlockHeader
 }
 
-func newBlock(prevBlockHash Hash, difficulty uint8) Block {
-	return Block{BlockHeader: newBlockHeader(prevBlockHash, difficulty)}
+func newBlock(prevBlockHash Hash, difficulty uint32) Block {
+	return Block{newBlockHeader(prevBlockHash, difficulty)}
 }
 
-// A block is valid if the header hash is below the difficulty target
-func (b Block) Valid() bool {
-	proofHash := b.GetHash()
+func (b Block) Proto() *pb.Block {
+	return &pb.Block{
+		Header: b.BlockHeader.Proto(),
+	}
+}
+
+// A block is valid if the header hash is below the difficulty target or if is the genesis block
+func (b Block) IsValid() (bool, error) {
+	if b.IsGenesisBlock() {
+		return true, nil
+	}
+
+	proofHash, err := b.Hash()
+	if err != nil {
+		return false, fmt.Errorf("failed to get block header hash")
+	}
+
 	var proofHashInt big.Int
 	proofHashInt.SetBytes(proofHash[:])
 
 	difficultyTarget := big.NewInt(1)
-	difficultyTarget.Lsh(difficultyTarget, uint(math.MaxUint8-b.difficulty))
+	difficultyTarget.Lsh(difficultyTarget, uint(math.MaxUint32-b.Difficulty))
 
-	return proofHashInt.Cmp(difficultyTarget) == -1
+	return proofHashInt.Cmp(difficultyTarget) == -1, nil
 }
 
-func (b Block) Marshal() ([]byte, error) {
-	return proto.Marshal(&pb.Block{
-		Header: &pb.Block_Header{
-			Version:       uint32(b.version),
-			PrevBlockHash: b.prevBlockHash[:],
-			Timestamp:     b.timestamp,
-			Difficulty:    uint32(b.difficulty),
-			Nonce:         b.nonce,
-		},
-	})
+func (b Block) IsGenesisBlock() bool {
+	return b.PrevBlockHash == nil
 }
