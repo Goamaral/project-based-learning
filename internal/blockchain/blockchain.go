@@ -2,44 +2,30 @@ package blockchain
 
 import (
 	"errors"
+	"fmt"
 	"math"
 )
 
 type Blockchain struct {
 	difficulty uint8
-	blocks     []*Block
+	blocks     []Block
 }
 
-func NewBlockchain(difficulty uint8) *Blockchain {
-	return &Blockchain{
+func NewBlockchain(difficulty uint8) Blockchain {
+	return Blockchain{
 		difficulty: difficulty,
-		blocks:     []*Block{},
+		blocks: []Block{
+			newBlock(Hash{}, difficulty), // Genesis block
+		},
 	}
 }
 
-func (bc *Blockchain) AddGenisisBlock() error {
-	if len(bc.blocks) != 0 {
-		return errors.New("Already has blocks")
-	}
+func (bc *Blockchain) MineNewBlock() error {
+	println("Creating block")
+	block := bc.newBlock()
+	println("Block created")
 
-	bc.blocks = append(bc.blocks, newBlock(Hash{}, bc.difficulty))
-	return nil
-}
-
-func (bc Blockchain) NewBlock() *Block {
-	return newBlock(bc.GetLastHash(), bc.difficulty)
-}
-
-func (bc *Blockchain) AddBlock(block *Block) error {
-	if !block.Valid() {
-		return errors.New("invalid block")
-	}
-
-	bc.blocks = append(bc.blocks, block)
-	return nil
-}
-
-func (bc *Blockchain) MineBlock(block *Block) error {
+	println("Mining block")
 	for {
 		if block.nonce == math.MaxInt32 {
 			return errors.New("reached max nonce")
@@ -49,10 +35,32 @@ func (bc *Blockchain) MineBlock(block *Block) error {
 			break
 		}
 	}
+	println("Block mined")
+
+	println("Adding block")
+	err := bc.addBlock(block)
+	if err != nil {
+		return fmt.Errorf("failed to add mined block: %w", err)
+	}
+	println("Block added")
 
 	return nil
 }
 
-func (bc Blockchain) GetLastHash() Hash {
+/* PRIVATE */
+func (bc Blockchain) newBlock() Block {
+	return newBlock(bc.getLastHash(), bc.difficulty)
+}
+
+func (bc *Blockchain) addBlock(block Block) error {
+	if !block.Valid() {
+		return errors.New("invalid block")
+	}
+
+	bc.blocks = append(bc.blocks, block)
+	return nil
+}
+
+func (bc Blockchain) getLastHash() Hash {
 	return bc.blocks[len(bc.blocks)-1].GetHash()
 }

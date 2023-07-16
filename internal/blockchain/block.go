@@ -2,6 +2,7 @@ package blockchain
 
 import (
 	"blockchain/pb"
+	"math"
 	"math/big"
 
 	"google.golang.org/protobuf/proto"
@@ -11,8 +12,8 @@ type Block struct {
 	*BlockHeader
 }
 
-func newBlock(prevBlockHash Hash, difficulty uint8) *Block {
-	return &Block{BlockHeader: newBlockHeader(prevBlockHash, difficulty)}
+func newBlock(prevBlockHash Hash, difficulty uint8) Block {
+	return Block{BlockHeader: newBlockHeader(prevBlockHash, difficulty)}
 }
 
 // A block is valid if the header hash is below the difficulty target
@@ -22,7 +23,7 @@ func (b Block) Valid() bool {
 	proofHashInt.SetBytes(proofHash[:])
 
 	difficultyTarget := big.NewInt(1)
-	difficultyTarget.Lsh(difficultyTarget, uint(b.difficulty))
+	difficultyTarget.Lsh(difficultyTarget, uint(math.MaxUint8-b.difficulty))
 
 	return proofHashInt.Cmp(difficultyTarget) == -1
 }
